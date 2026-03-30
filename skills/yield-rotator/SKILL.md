@@ -1,3 +1,10 @@
+---
+name: yield-rotator
+description: Cross-protocol yield optimizer that monitors Hermetica sUSDh staking APY vs Bitflow HODLMM live APR and rotates capital to the higher-yielding protocol when the yield gap hits 2%+.
+day: 5
+category: Trading / Yield
+---
+
 # Yield Rotator — Cross-Protocol Yield Optimizer
 
 **Day 5 Submission** | Category: Trading / Yield
