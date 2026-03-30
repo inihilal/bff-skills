@@ -7,7 +7,7 @@
  *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts doctor
  *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts status --address SP...
  *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts migrate --from-bin <id> --to-bin <id> --amount <pct> --pool-id dlmm_1
- *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts migrate --from-bin <id> --to-bin <id> --amount <pct> --verify
+ * *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts migrate --from-bin <id> --to-bin <id> --amount <pct> [--no-verify]
  *   bun run hodlmm-bin-migrator/hodlmm-bin-migrator.ts auto-rebalance --pool-id dlmm_1
  *
  * Output: strict JSON { status, action, data, error }
@@ -27,7 +27,6 @@ const MAX_GAS_STX = 50;
 const COOLDOWN_HOURS = 4;
 const MIN_24H_VOLUME_USD = 10_000;
 const FETCH_TIMEOUT_MS = 30_000;
-const PRICE_SCALE = 1e8;
 const STATE_FILE = join(homedir(), ".hodlmm-migrator-state.json");
 
 // Verify-mode polling constants
@@ -184,7 +183,7 @@ async function fetchPoolStats(poolId: string): Promise<PoolStats> {
   try {
     const data = await fetchJson<{ data?: AppPool[] }>(`${BITFLOW_API}/api/app/v1/pools`);
     const match = data.data?.find((p) => p.poolId === poolId);
-    if (!match) return { volume24hUsd: 0, liquidityUsd: 0, tokenXPriceUsd: 0, tokenXDecimals: 8, tokenYDecimals: 6, apr24h: 0 };
+    if (!match) return { volume24hUsd: -1, liquidityUsd: 0, tokenXPriceUsd: 0, tokenXDecimals: 8, tokenYDecimals: 6, apr24h: 0 };
     return {
       volume24hUsd: match.volumeUsd1d,
       liquidityUsd: match.tvlUsd,
@@ -194,7 +193,7 @@ async function fetchPoolStats(poolId: string): Promise<PoolStats> {
       apr24h: match.apr24h,
     };
   } catch {
-    return { volume24hUsd: 0, liquidityUsd: 0, tokenXPriceUsd: 0, tokenXDecimals: 8, tokenYDecimals: 6, apr24h: 0 };
+    return { volume24hUsd: -1, liquidityUsd: 0, tokenXPriceUsd: 0, tokenXDecimals: 8, tokenYDecimals: 6, apr24h: 0 };
   }
 }
 
@@ -217,7 +216,7 @@ function out(o: OutJson): void {
   console.log(JSON.stringify(o, null, 2));
 }
 
-function outError(message: string, code?: string): void {
+function outError(message: string, code?: string): never {
   console.error(JSON.stringify({ error: message, code }));
   process.exit(1);
 }
@@ -691,9 +690,8 @@ program
   .option("--address <stx_addr>", "Stacks address (defaults to STX_ADDRESS env var)")
   .option("--dry-run", "Simulate without broadcasting", false)
   .option(
-    "--verify",
-    "Atomic safety check: after remove-liquidity confirms, verify removal before submitting add-liquidity",
-    false
+    "--no-verify",
+    "Skip atomic safety check: do not verify removal before submitting add-liquidity (not recommended)",
   )
   .action(async (opts: { fromBin: number; toBin: number; amount: number; poolId: string; address?: string; dryRun: boolean; verify: boolean }) => {
     const address = opts.address ?? process.env.STX_ADDRESS;
@@ -734,7 +732,9 @@ program
       const refusals: string[] = [];
       if (!gasResult.ok && !opts.dryRun) refusals.push(`gas ${gasResult.estimated_stx} STX > limit ${MAX_GAS_STX} STX`);
       if (!cooldown.ok && !opts.dryRun) refusals.push(`cooldown: ${cooldown.remaining_hours}h remaining`);
-      if (poolStats.volume24hUsd < MIN_24H_VOLUME_USD && poolStats.volume24hUsd > 0) {
+      if (poolStats.volume24hUsd === -1) {
+        refusals.push("24h volume unknown (API error) — cannot verify pool activity");
+      } else if (poolStats.volume24hUsd < MIN_24H_VOLUME_USD) {
         refusals.push(`24h volume $${Math.round(poolStats.volume24hUsd)} < $${MIN_24H_VOLUME_USD} minimum`);
       }
 
@@ -757,7 +757,16 @@ program
           : parseFloat(String(fromBinData.user_liquidity ?? "0")))
         : 0;
 
-      if (userLiquidity === 0 && !opts.dryRun) {
+      if (userLiquidity === 0) {
+        if (opts.dryRun) {
+          out({
+            status: "success",
+            action: `DRY RUN — no liquidity found in bin ${opts.fromBin} for ${address} (nothing to migrate)`,
+            data: { dry_run: true, from_bin: opts.fromBin, address, pool_id: opts.poolId },
+            error: null,
+          });
+          return;
+        }
         out({
           status: "blocked",
           action: `No liquidity found in bin ${opts.fromBin} for ${address}`,
@@ -768,8 +777,7 @@ program
         return;
       }
 
-      // Use a placeholder for dry-run if no position found
-      const effectiveLiquidity = userLiquidity > 0 ? userLiquidity : 1_000_000;
+      const effectiveLiquidity = userLiquidity;
 
       const result = await buildAndSubmitMigration({
         fromBin: opts.fromBin,
@@ -883,7 +891,9 @@ program
       const refusals: string[] = [];
       if (!gasResult.ok && !opts.dryRun) refusals.push(`gas ${gasResult.estimated_stx} STX > limit ${MAX_GAS_STX} STX`);
       if (!cooldown.ok && !opts.dryRun) refusals.push(`cooldown: ${cooldown.remaining_hours}h remaining`);
-      if (poolStats.volume24hUsd > 0 && poolStats.volume24hUsd < MIN_24H_VOLUME_USD) {
+      if (poolStats.volume24hUsd === -1) {
+        refusals.push("24h volume unknown (API error) — cannot verify pool activity");
+      } else if (poolStats.volume24hUsd < MIN_24H_VOLUME_USD) {
         refusals.push(`24h volume $${Math.round(poolStats.volume24hUsd)} < $${MIN_24H_VOLUME_USD} minimum`);
       }
 
