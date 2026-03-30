@@ -1,0 +1,36 @@
+{
+  "name": "@bff-skills/yield-rotator",
+  "version": "0.1.0",
+  "description": "Cross-protocol yield optimizer: rotates between Hermetica sUSDh and HODLMM based on APY gap",
+  "main": "dist/yield-rotator.js",
+  "bin": {
+    "yield-rotator": "./dist/yield-rotator.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/yield-rotator.ts",
+    "monitor": "ts-node src/yield-rotator.ts monitor",
+    "rotate": "ts-node src/yield-rotator.ts rotate",
+    "lint": "eslint 'src/**/*.ts'",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@stacks/network": "^6.12.0",
+    "@stacks/transactions": "^6.12.0",
+    "@stacks/connect": "^7.5.0",
+    "axios": "^1.6.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["stacks", "defi", "yield", "hermetica", "hodlmm", "bff-skills"],
+  "author": "bff-skills",
+  "license": "MIT"
+}
