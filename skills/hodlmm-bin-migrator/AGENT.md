@@ -6,6 +6,23 @@ description: "Autonomous agent that migrates Bitflow HODLMM liquidity between bi
 
 # Agent Behavior — HODLMM Bin Migrator
 
+## Required Environment Variables
+
+These must be set before running any command. The tool will exit with an error if they are missing.
+
+| Variable | Required | Description |
+|---|---|---|
+| `STX_ADDRESS` | **Always** | Your Stacks mainnet address (must start with `SP`). Used as the transaction sender for `migrate` and `auto-rebalance`. Missing = hard error, no fallback. |
+| `STX_PRIVATE_KEY` | Write commands only | Your Stacks private key (hex-encoded). Required for `migrate` and `auto-rebalance`. Not needed for `doctor` or `status`. |
+
+Copy `.env.example` to `.env` and fill in both values before use:
+
+```sh
+cp .env.example .env
+# edit .env and set STX_ADDRESS and STX_PRIVATE_KEY
+```
+
+
 ## Decision order
 
 1. Run `doctor` first. If any check fails, stop and surface the exact blocker to the user. Do not proceed.
